@@ -26,7 +26,14 @@ def when_is_iss_at(lat, lon):
     resp = urllib.request.urlopen(url)
     res = json.loads(resp.read().decode())
     passes = res['response']
-    return(passes[0])
+    ret = passes[0]
+    currentTime = time.time()
+    if currentTime > ret['risetime']:
+        for i in range(0, len(passes)):
+            if passes[i]['risetime'] > currentTime:
+                ret = passes[i]
+                break
+    return ret
 
 def get_distance_between(c1, c2):
     return math.sqrt(math.pow((c1['x'] - c2['x']), 2) + math.pow((c1['y'] - c2['y']), 2) + math.pow((c1['z'] - c2['z']), 2))
@@ -58,7 +65,7 @@ class Iss_Tracker:
         # The local coordinates
         self.local_lat = 56.108715
         self.local_lon = 15.661008
-        self.dc_period = 0.4 # seconds
+        self.dc_period = 1 # seconds
         self.dc = 0
         self.iss_poll_rate = 5.00 # as suggested by open-notify.org
         self.far_dc_dist = 4000.00 #km 
@@ -86,6 +93,9 @@ class Iss_Tracker:
             else:
                 act_time = self.dc * 0.01 * self.dc_period
                 off_time = self.dc_period - act_time
+                # Hack to modulate period instead of DC
+                # This way, we change period instead of DC for indication
+                act_time = off_time
                 # Set gpio on
                 GPIO.output(self.LED, 1)
                 time.sleep(act_time)
@@ -136,7 +146,6 @@ class Iss_Tracker:
             currentTime = time.time()
             if currentTime > rt and currentTime < ft:
                 self.dc = self.calc_dc_from_distance(dist)
-                print('Visible with dc: ' + str(self.dc))
             else:
                 self.dc = 0
             self.update_display(dist, iss_pos['lat'], iss_pos['lon'], rt, dur)

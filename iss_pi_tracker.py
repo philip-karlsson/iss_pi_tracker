@@ -4,6 +4,12 @@ import urllib.request
 import math
 from threading import Thread
 import RPi.GPIO as GPIO
+import datetime
+
+from luma.core.interface.serial import i2c
+from luma.core.render import canvas
+from luma.oled.device import sh1106
+
 
 def get_iss_pos_now():
     iss_now_url = 'http://api.open-notify.org/iss-now.json'
@@ -45,6 +51,9 @@ def calculate_eucladian_distance_to_iss(iss_lat, iss_lon, src_lat, src_lon):
 # Use led 36 to indicate passage
 class Iss_Tracker:
     def __init__(self):
+        # Setup display
+        serial = i2c(port=1, address=0x3C)
+        self.display = sh1106(serial)
         self.LED = 36
         # The local coordinates
         self.local_lat = 56.108715
@@ -95,13 +104,30 @@ class Iss_Tracker:
             dc = 1
         return dc
 
+    def update_display(self, distance, iss_lat, iss_lon, time_of_next_rise, duration):
+        dur = str(datetime.timedelta(seconds=duration))
+        nex = time.ctime(time_of_next_rise)
+        nex = ' '.join(nex.split(' ')[:-1])
+        nex = ' '.join(nex.split(' ')[1:])
+
+        distStr = 'ISS Dist:%.2fkm' % distance
+        issLatStr = 'ISS Lat:%.2fdeg.' % iss_lat
+        issLonStr = 'ISS Lon:%.2fdeg.' % iss_lon
+        nextStr = 'Next:' + nex
+        durStr = 'Length:' + dur
+        with canvas(self.display) as draw:
+            draw.text((0, 0), distStr, fill='white')
+            draw.text((0, 12), issLatStr, fill='white')
+            draw.text((0, 24), issLonStr, fill='white')
+            draw.text((0, 36), nextStr, fill='white')
+            draw.text((0, 48), durStr, fill='white')
+
     def main_thread(self):
         """ Responsible for polling the iss position and writing DC """
         while True:
             # Get the current ISS pos
             iss_pos = get_iss_pos_now()
             dist = calculate_eucladian_distance_to_iss(iss_pos['lat'], iss_pos['lon'], self.local_lat, self.local_lon)
-            print('ISS distance from Sturkoe:' + str(dist) + 'km')
             # Get next local sight
             res = when_is_iss_at(self.local_lat, self.local_lon)
             rt = res['risetime']
@@ -113,6 +139,7 @@ class Iss_Tracker:
                 print('Visible with dc: ' + str(self.dc))
             else:
                 self.dc = 0
+            self.update_display(dist, iss_pos['lat'], iss_pos['lon'], rt, dur)
             time.sleep(5.00)
 
 def main():

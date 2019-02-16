@@ -62,7 +62,7 @@ class Iss_Tracker:
 
     def gpio_setup(self):
         GPIO.setmode(GPIO.BOARD)
-        GPIO.setmode(self.LED, GPIO.OUT)
+        GPIO.setup(self.LED, GPIO.OUT)
         GPIO.output(self.LED, GPIO.LOW)
 
     def gpio_pwm_thread(self):

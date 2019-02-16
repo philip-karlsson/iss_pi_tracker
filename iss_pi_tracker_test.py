@@ -1,7 +1,7 @@
 import time
-import RPi.GPIO as GPIO
 import json
 import urllib.request
+import math
 
 # Use led 36 to indicate passage
 LED = 36
@@ -48,20 +48,16 @@ def calculate_eucladian_distance_to_iss(iss_lat, iss_lon, src_lat, src_lon):
     return get_distance_between(iss_coord, local_coord)
 
 def setup():
-    GPIO.setmode(GPIO.BOARD)
-    GPIO.setup(LED, GPIO.OUT)
-    GPIO.output(LED, GPIO.LOW)
+    pass
 
 def process():
-    GPIO.output(LED, 1)
-    time.sleep(0.5)
-    GPIO.output(LED, 0)
-    time.sleep(0.5)
     # resp = when_is_iss_at(sturkoe_lat, sturkoe_long)
-    # resp = get_iss_pos_now()
-    # print(resp['lat'])
-    # print(resp['lon'])
-    # dist = calculate_eucladian_distance_to_iss(iss_lat, iss_lon, sturkoe_lat, sturkoe_long)
+    resp = get_iss_pos_now()
+    iss_lat = resp['lat']
+    iss_lon = resp['lon']
+    dist = calculate_eucladian_distance_to_iss(iss_lat, iss_lon, sturkoe_lat, sturkoe_long)
+    print('ISS distance form sturkoe:' + str(dist) + 'km')
+    time.sleep(5.0)
     # print(time.ctime(resp['response'][0]['risetime']))
 
 def main():

@@ -52,8 +52,8 @@ class Iss_Tracker:
         self.dc_period = 0.4 # seconds
         self.dc = 0
         self.iss_poll_rate = 5.00 # as suggested by open-notify.org
-        self.far_dc_dist = 8000.00 #km 
-        self.close_dc_dist = 2000.00 #km
+        self.far_dc_dist = 4000.00 #km 
+        self.close_dc_dist = 1000.00 #km
         self.dc_range = self.far_dc_dist - self.close_dc_dist
 
     def setup_pwm_thread(self):

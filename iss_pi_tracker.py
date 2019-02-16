@@ -1,13 +1,9 @@
 import time
-import RPi.GPIO as GPIO
 import json
 import urllib.request
-
-# Use led 36 to indicate passage
-LED = 36
-
-sturkoe_lat = 56.108715
-sturkoe_long = 15.661008
+import math
+from threading import Thread
+import RPi.GPIO as GPIO
 
 def get_iss_pos_now():
     iss_now_url = 'http://api.open-notify.org/iss-now.json'
@@ -24,9 +20,7 @@ def when_is_iss_at(lat, lon):
     resp = urllib.request.urlopen(url)
     res = json.loads(resp.read().decode())
     passes = res['response']
-    print(passes[0])
-    for pa in passes:
-        print(time.ctime(pa['risetime']))
+    return(passes[0])
 
 def get_distance_between(c1, c2):
     return math.sqrt(math.pow((c1['x'] - c2['x']), 2) + math.pow((c1['y'] - c2['y']), 2) + math.pow((c1['z'] - c2['z']), 2))
@@ -47,27 +41,85 @@ def calculate_eucladian_distance_to_iss(iss_lat, iss_lon, src_lat, src_lon):
     iss_coord = get_3d_coord(iss_lat, iss_lon, 6808)
     return get_distance_between(iss_coord, local_coord)
 
-def setup():
-    GPIO.setmode(GPIO.BOARD)
-    GPIO.setup(LED, GPIO.OUT)
-    GPIO.output(LED, GPIO.LOW)
+# Global variables
+# Use led 36 to indicate passage
+class Iss_Tracker:
+    def __init__(self):
+        self.LED = 36
+        # The local coordinates
+        self.local_lat = 56.108715
+        self.local_lon = 15.661008
+        self.dc_period = 0.4 # seconds
+        self.dc = 0
+        self.iss_poll_rate = 5.00 # as suggested by open-notify.org
+        self.far_dc_dist = 4000.00 #km 
+        self.close_dc_dist = 500.00 #km
+        self.dc_range = self.far_dc_dist - self.close_dc_dist
 
-def process():
-    GPIO.output(LED, 1)
-    time.sleep(0.5)
-    GPIO.output(LED, 0)
-    time.sleep(0.5)
-    # resp = when_is_iss_at(sturkoe_lat, sturkoe_long)
-    # resp = get_iss_pos_now()
-    # print(resp['lat'])
-    # print(resp['lon'])
-    # dist = calculate_eucladian_distance_to_iss(iss_lat, iss_lon, sturkoe_lat, sturkoe_long)
-    # print(time.ctime(resp['response'][0]['risetime']))
+    def setup_pwm_thread(self):
+        self.t = Thread(target=self.gpio_pwm_thread)
+        self.t.start()
+
+    def gpio_setup(self):
+        GPIO.setmode(GPIO.BOARD)
+        GPIO.setmode(self.LED, GPIO.OUT)
+        GPIO.output(self.LED, GPIO.LOW)
+
+    def gpio_pwm_thread(self):
+        """ Responsible for creating DC """
+        while True:
+            if self.dc == 0:
+                GPIO.output(self.LED, 0)
+                time.sleep(self.dc_period)
+            elif self.dc == 100:
+                GPIO.output(self.LED, 1)
+                time.sleep(self.dc_period)
+            else:
+                act_time = self.dc * 0.01 * self.dc_period
+                off_time = self.dc_period - act_time
+                # Set gpio on
+                GPIO.output(self.LED, 1)
+                time.sleep(act_time)
+                # Set gpio off
+                GPIO.output(self.LED, 0)
+                time.sleep(off_time)
+
+
+    def calc_dc_from_distance(self, distance):
+        fault = distance - self.close_dc_dist
+        if fault <= 0:
+            dc = 100
+        else:
+            dc = 100 - (100 * (fault / self.dc_range))
+        if dc < 1:
+            dc = 1
+        return dc
+
+    def main_thread(self):
+        """ Responsible for polling the iss position and writing DC """
+        while True:
+            # Get the current ISS pos
+            iss_pos = get_iss_pos_now()
+            dist = calculate_eucladian_distance_to_iss(iss_pos['lat'], iss_pos['lon'], self.local_lat, self.local_lon)
+            print('ISS distance from Sturkoe:' + str(dist) + 'km')
+            # Get next local sight
+            res = when_is_iss_at(self.local_lat, self.local_lon)
+            rt = res['risetime']
+            dur = res['duration']
+            ft = rt + dur
+            currentTime = time.time()
+            if currentTime > rt and currentTime < ft:
+                self.dc = self.calc_dc_from_distance(dist)
+                print('Visible with dc: ' + str(self.dc))
+            else:
+                self.dc = 0
+            time.sleep(5.00)
 
 def main():
-    setup()
-    while True:
-        process()
+    tracker = Iss_Tracker()
+    tracker.gpio_setup()
+    tracker.setup_pwm_thread()
+    tracker.main_thread()
 
 if __name__ == "__main__":
     main()

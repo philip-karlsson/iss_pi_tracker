@@ -1,0 +1,13 @@
+[Unit]
+Description=ISS Pi Tracker
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/dev/iss_pi_tracker
+ExecStart=/usr/bin/python3 iss_pi_tracker.py
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

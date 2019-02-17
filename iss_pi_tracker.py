@@ -28,21 +28,41 @@ def when_is_iss_at(lat, lon):
     passes = res['response']
     ret = passes[0]
     currentTime = time.time()
-    if currentTime > ret['risetime']:
+    if currentTime > ret['risetime'] + ret['duration']:
         for i in range(0, len(passes)):
             if passes[i]['risetime'] > currentTime:
                 ret = passes[i]
                 break
     return ret
 
+def get_elev(c1, c2):
+    x = c1['x']
+    y = c1['y']
+    z = c1['z']
+    dx = c2['x'] - x
+    dy = c2['y'] - y
+    dz = c2['z'] - z
+    e = (x*dx + y*dy + z*dz) / math.sqrt(((x*x + y*y + z*z) * (dx*dx + dy*dy + dz*dz)))
+    elev = 90 - math.degrees(math.acos(e))
+    return elev
+
+def get_azimuth(c1, c2):
+    phi_1 = math.radians(c1['lat'])
+    phi_2 = math.radians(c2['lat'])
+    delta_lambda = math.radians(c2['lon'] - c1['lon'])
+    y = math.sin(delta_lambda) * math.cos(phi_2)
+    x = math.cos(phi_1) * math.sin(phi_2) - math.sin(phi_1) * math.cos(phi_2) * math.cos(delta_lambda)
+    theta = math.atan2(y, x)
+    return int(math.degrees(theta) + 360) % 360
+
 def get_distance_between(c1, c2):
     return math.sqrt(math.pow((c1['x'] - c2['x']), 2) + math.pow((c1['y'] - c2['y']), 2) + math.pow((c1['z'] - c2['z']), 2))
 
 def get_3d_coord(lat, lon, r):
-    theta = lat * (math.pi / 180.00)
-    phi = lon * (math.pi / 180.00)
-    x = r * (math.cos(phi) * math.cos(theta))
-    y = r * (math.cos(phi) * math.sin(theta))
+    theta = math.radians(lat)
+    phi = math.radians(lon)
+    x = r * (math.cos(theta) * math.cos(phi))
+    y = r * (math.cos(theta) * math.sin(phi))
     z = r * (math.sin(theta))
     return {'x': x, 'y': y, 'z': z}
 
@@ -53,6 +73,26 @@ def calculate_eucladian_distance_to_iss(iss_lat, iss_lon, src_lat, src_lon):
     # Iss is approx. 400km above the earth
     iss_coord = get_3d_coord(iss_lat, iss_lon, 6808)
     return get_distance_between(iss_coord, local_coord)
+
+def get_hdg_letter(az):
+    hdgLetter = ''
+    if az == 0:
+        hdgLetter = 'N'
+    elif az > 0 and az < 90:
+        hdgLetter = 'NE'
+    elif az == 90:
+        hdgLetter = 'E'
+    elif az > 90 and az < 180:
+        hdgLetter = 'SE'
+    elif az == 180:
+        hdgLetter = 'S'
+    elif az > 180 and az < 270:
+        hdgLetter = 'SW'
+    elif az == 270:
+        hdgLetter = 'W'
+    elif az > 270 and az < 360:
+        hdgLetter = 'NW'
+    return hdgLetter
 
 # Global variables
 # Use led 36 to indicate passage
@@ -71,6 +111,8 @@ class Iss_Tracker:
         self.far_dc_dist = 4000.00 #km 
         self.close_dc_dist = 500.00 #km
         self.dc_range = self.far_dc_dist - self.close_dc_dist
+        # We are approx. 6400km from the centero of the earth
+        self.local_coord = get_3d_coord(self.local_lat, self.local_lon, 6400)
 
     def setup_pwm_thread(self):
         self.t = Thread(target=self.gpio_pwm_thread)
@@ -114,7 +156,7 @@ class Iss_Tracker:
             dc = 1
         return dc
 
-    def update_display(self, distance, iss_lat, iss_lon, time_of_next_rise, duration):
+    def update_display(self, distance, iss_lat, iss_lon, time_of_next_rise, duration, elev, az):
         dur = str(datetime.timedelta(seconds=duration))
         nex = time.ctime(time_of_next_rise)
         nex = ' '.join(nex.split(' ')[:-1])
@@ -125,19 +167,25 @@ class Iss_Tracker:
         issLonStr = 'ISS Lon:%.2fdeg.' % iss_lon
         nextStr = 'Next:' + nex
         durStr = 'Length:' + dur
+        hdgLetter = get_hdg_letter(az)
+        altHdgStr = 'Hdg:%d%s Alt:%d' % (int(az), hdgLetter, int(elev))
         with canvas(self.display) as draw:
             draw.text((0, 0), distStr, fill='white')
-            draw.text((0, 12), issLatStr, fill='white')
-            draw.text((0, 24), issLonStr, fill='white')
-            draw.text((0, 36), nextStr, fill='white')
-            draw.text((0, 48), durStr, fill='white')
+            draw.text((0, 10), issLatStr, fill='white')
+            draw.text((0, 20), issLonStr, fill='white')
+            draw.text((0, 30), nextStr, fill='white')
+            draw.text((0, 40), durStr, fill='white')
+            draw.text((0, 50), altHdgStr, fill='white')
 
     def main_thread(self):
         """ Responsible for polling the iss position and writing DC """
         while True:
             # Get the current ISS pos
             iss_pos = get_iss_pos_now()
-            dist = calculate_eucladian_distance_to_iss(iss_pos['lat'], iss_pos['lon'], self.local_lat, self.local_lon)
+            iss_coord = get_3d_coord(iss_pos['lat'], iss_pos['lon'], 6808)
+            dist = get_distance_between(iss_coord, self.local_coord)
+            elev = get_elev(self.local_coord, iss_coord)
+            az = get_azimuth({'lat': self.local_lat, 'lon': self.local_lon}, iss_pos)
             # Get next local sight
             res = when_is_iss_at(self.local_lat, self.local_lon)
             rt = res['risetime']
@@ -148,7 +196,7 @@ class Iss_Tracker:
                 self.dc = self.calc_dc_from_distance(dist)
             else:
                 self.dc = 0
-            self.update_display(dist, iss_pos['lat'], iss_pos['lon'], rt, dur)
+            self.update_display(dist, iss_pos['lat'], iss_pos['lon'], rt, dur, elev, az)
             time.sleep(5.00)
 
 def main():

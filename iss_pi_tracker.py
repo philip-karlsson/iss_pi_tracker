@@ -10,10 +10,15 @@ from luma.core.interface.serial import i2c
 from luma.core.render import canvas
 from luma.oled.device import sh1106
 
+from socket import timeout
 
 def get_iss_pos_now():
     iss_now_url = 'http://api.open-notify.org/iss-now.json'
-    resp = urllib.request.urlopen(iss_now_url)
+    try:
+        resp = urllib.request.urlopen(iss_now_url, timeout=5)
+    except timeout:
+        print('Timeout in get pos')
+        return None
     res = json.loads(resp.read().decode())
     location = res['iss_position']
     lat = float(location['latitude'])
@@ -23,7 +28,11 @@ def get_iss_pos_now():
 def when_is_iss_at(lat, lon):
     url = 'http://api.open-notify.org/iss-pass.json'
     url = url + '?lat=' + str(lat) + '&lon=' + str(lon)
-    resp = urllib.request.urlopen(url)
+    try:
+        resp = urllib.request.urlopen(url, timeout=5)
+    except timeout:
+        print('Timeout in when is iss')
+        return None
     res = json.loads(resp.read().decode())
     passes = res['response']
     ret = passes[0]
@@ -156,8 +165,7 @@ class Iss_Tracker:
             dc = 1
         return dc
 
-    def update_display(self, distance, iss_lat, iss_lon, time_of_next_rise, duration, elev, az):
-        dur = str(datetime.timedelta(seconds=duration))
+    def update_display(self, distance, iss_lat, iss_lon, time_of_next_rise, time_to, elev, az):
         nex = time.ctime(time_of_next_rise)
         nex = ' '.join(nex.split(' ')[:-1])
         nex = ' '.join(nex.split(' ')[1:])
@@ -166,7 +174,6 @@ class Iss_Tracker:
         issLatStr = 'ISS Lat:%.2fdeg.' % iss_lat
         issLonStr = 'ISS Lon:%.2fdeg.' % iss_lon
         nextStr = 'Next:' + nex
-        durStr = 'Length:' + dur
         hdgLetter = get_hdg_letter(az)
         altHdgStr = 'Hdg:%d%s Alt:%d' % (int(az), hdgLetter, int(elev))
         with canvas(self.display) as draw:
@@ -174,7 +181,7 @@ class Iss_Tracker:
             draw.text((0, 10), issLatStr, fill='white')
             draw.text((0, 20), issLonStr, fill='white')
             draw.text((0, 30), nextStr, fill='white')
-            draw.text((0, 40), durStr, fill='white')
+            draw.text((0, 40), time_to, fill='white')
             draw.text((0, 50), altHdgStr, fill='white')
 
     def main_thread(self):
@@ -182,22 +189,35 @@ class Iss_Tracker:
         while True:
             # Get the current ISS pos
             iss_pos = get_iss_pos_now()
+            if iss_pos == None:
+                time.sleep(5)
+                continue
             iss_coord = get_3d_coord(iss_pos['lat'], iss_pos['lon'], 6808)
             dist = get_distance_between(iss_coord, self.local_coord)
             elev = get_elev(self.local_coord, iss_coord)
             az = get_azimuth({'lat': self.local_lat, 'lon': self.local_lon}, iss_pos)
             # Get next local sight
+            time.sleep(1.00) #Wait one second before the next req
             res = when_is_iss_at(self.local_lat, self.local_lon)
+            if res == None:
+                time.sleep(5)
+                continue
             rt = res['risetime']
             dur = res['duration']
             ft = rt + dur
             currentTime = time.time()
             if currentTime > rt and currentTime < ft:
                 self.dc = self.calc_dc_from_distance(dist)
+                timediff = str(datetime.timedelta(seconds=ft-currentTime))
+                timediff = ''.join(timediff.split('.')[:-1])
+                time_to = 'Fall in:' + timediff
             else:
+                timediff = str(datetime.timedelta(seconds=rt-currentTime))
+                timediff = ''.join(timediff.split('.')[:-1])
+                time_to = 'Rise in:' + timediff
                 self.dc = 0
-            self.update_display(dist, iss_pos['lat'], iss_pos['lon'], rt, dur, elev, az)
-            time.sleep(5.00)
+            self.update_display(dist, iss_pos['lat'], iss_pos['lon'], rt, time_to, elev, az)
+            time.sleep(4.00)
 
 def main():
     tracker = Iss_Tracker()

@@ -15,9 +15,10 @@ from socket import timeout
 def get_iss_pos_now():
     iss_now_url = 'http://api.open-notify.org/iss-now.json'
     try:
-        resp = urllib.request.urlopen(iss_now_url, timeout=5)
-    except timeout:
+        resp = urllib.request.urlopen(iss_now_url, timeout=10)
+    except Exception as e:
         print('Timeout in get pos')
+        print('Exception:' + str(e))
         return None
     res = json.loads(resp.read().decode())
     location = res['iss_position']
@@ -29,9 +30,10 @@ def when_is_iss_at(lat, lon):
     url = 'http://api.open-notify.org/iss-pass.json'
     url = url + '?lat=' + str(lat) + '&lon=' + str(lon)
     try:
-        resp = urllib.request.urlopen(url, timeout=5)
-    except timeout:
+        resp = urllib.request.urlopen(url, timeout=10)
+    except Exception as e:
         print('Timeout in when is iss')
+        print('Exception:' + str(e))
         return None
     res = json.loads(resp.read().decode())
     passes = res['response']

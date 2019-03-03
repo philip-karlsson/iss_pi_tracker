@@ -212,7 +212,7 @@ class Iss_Tracker:
                 self.dc = self.calc_dc_from_distance(dist)
                 timediff = str(datetime.timedelta(seconds=ft-currentTime))
                 timediff = ''.join(timediff.split('.')[:-1])
-                time_to = 'Fall in:' + timediff
+                time_to = 'Set in:' + timediff
             else:
                 timediff = str(datetime.timedelta(seconds=rt-currentTime))
                 timediff = ''.join(timediff.split('.')[:-1])

@@ -6,9 +6,8 @@ from threading import Thread
 import RPi.GPIO as GPIO
 import datetime
 
-from luma.core.interface.serial import i2c
-from luma.core.render import canvas
-from luma.oled.device import sh1106
+import requests
+import json
 
 from socket import timeout
 
@@ -110,8 +109,8 @@ def get_hdg_letter(az):
 class Iss_Tracker:
     def __init__(self):
         # Setup display
-        serial = i2c(port=1, address=0x3C)
-        self.display = sh1106(serial)
+        #serial = i2c(port=1, address=0x3C)
+        #self.display = sh1106(serial)
         self.LED = 36
         # The local coordinates
         self.local_lat = 56.108715
@@ -178,13 +177,21 @@ class Iss_Tracker:
         nextStr = 'Next:' + nex
         hdgLetter = get_hdg_letter(az)
         altHdgStr = 'Hdg:%d%s Alt:%d' % (int(az), hdgLetter, int(elev))
-        with canvas(self.display) as draw:
-            draw.text((0, 0), distStr, fill='white')
-            draw.text((0, 10), issLatStr, fill='white')
-            draw.text((0, 20), issLonStr, fill='white')
-            draw.text((0, 30), nextStr, fill='white')
-            draw.text((0, 40), time_to, fill='white')
-            draw.text((0, 50), altHdgStr, fill='white')
+
+        report = {
+                "distStr": distStr,
+                "issLatStr": issLatStr,
+                "issLonStr": issLonStr,
+                "nextStr": nextStr,
+                "hdgLetter": hdgLetter,
+                "altHdgStr": altHdgStr,
+                "time_to": time_to
+        }
+
+        try:
+            r = requests.post('http://localhost:6666/handle', json=report, timeout=1.5)
+        except:
+            pass
 
     def main_thread(self):
         """ Responsible for polling the iss position and writing DC """

@@ -225,7 +225,7 @@ class Iss_Tracker:
                 timediff = ''.join(timediff.split('.')[:-1])
                 time_to = 'Rise in:' + timediff
                 self.dc = 0
-            self.update_display(dist, iss_pos['lat'], iss_pos['lon'], rt, time_to, elev, az)
+            #self.update_display(dist, iss_pos['lat'], iss_pos['lon'], rt, time_to, elev, az)
             time.sleep(4.00)
 
 def main():
